@@ -1,0 +1,6 @@
+contracts:
+  # Contratos que este repo posee. El marcador `# CONTRACT:` en el código es lo que ve quien edita el fichero.
+  - id: rpc.paseo-btw.side-question.v1
+    tipo: rpc
+    fichero: shared/contract.ts
+    nota: "`agent.side-question` (arranca la respuesta y devuelve id) y `agent.side-question.poll` (texto hasta ahora, done, error, tool, model). Son la única superficie entre el panel y el server; una forma nueva entra como .v2 y el nombre viejo sigue respondiendo."
