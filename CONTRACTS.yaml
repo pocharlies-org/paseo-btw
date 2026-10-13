@@ -1,6 +1,19 @@
+# CONTRACTS.yaml: the surfaces other programs consume from this repository.
+#
+# An active entry is never renamed nor deleted. A breaking change is a new `.vN+1` entry, with the old one set to `status: deprecated`,
+# `replaced_by` and `remove_after`. A commit that touches a contract surface updates this registry in the same push and carries the
+# trailer `Contract-Change: <action> <id>`.
+version: 1
+registry_files:
+  - CONTRACTS.yaml
 contracts:
-  # Contratos que este repo posee. El marcador `# CONTRACT:` en el código es lo que ve quien edita el fichero.
   - id: rpc.paseo-btw.side-question.v1
-    tipo: rpc
-    fichero: shared/contract.ts
-    nota: "`agent.side-question` (arranca la respuesta y devuelve id) y `agent.side-question.poll` (texto hasta ahora, done, error, tool, model). Son la única superficie entre el panel y el server; una forma nueva entra como .v2 y el nombre viejo sigue respondiendo."
+    kind: http-route
+    value: "agent.side-question"
+    role: provider
+    files:
+      - shared/contract.ts
+    status: active
+    note: >-
+      `agent.side-question` (starts the answer and returns its id) and `agent.side-question.poll` (text so far, done, error, tool, model):
+      the only surface between this plugin's panel and its server half. A new shape enters as `.v2` and the old name keeps answering.
