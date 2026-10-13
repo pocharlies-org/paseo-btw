@@ -1,10 +1,17 @@
 {
   "name": "paseo-btw",
-  "private": true,
   "version": "1.0.0",
   "type": "module",
   "description": "Paseo plugin: /btw, a side question answered from the context of the session with no tools, streaming into its own panel.",
-  "files": ["paseo-plugin.json", "OVERVIEW.md", "index.client.tsx", "index.server.ts", "client/", "server/", "shared/"],
+  "files": [
+    "paseo-plugin.json",
+    "OVERVIEW.md",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test test/*.test.ts"
@@ -20,5 +27,10 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "typescript": "^5.9.3"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pocharlies-org/paseo-btw.git"
   }
 }
