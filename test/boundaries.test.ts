@@ -45,7 +45,7 @@ describe("C2 and P3.5 · the runtimes do not reach into each other", () => {
     const nodeInClient = clientFiles.concat(sharedFiles).flatMap((file) => importsOf(file).filter((spec) => spec.startsWith("node:") || builtinModules.includes(spec)).map((spec) => `${file} imports ${spec}`));
     assert.deepEqual(nodeInClient, []);
     assert.deepEqual(
-      offences(clientFiles, ["client", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui", "react", "react-native", "@tanstack/react-query", "zod"]),
+      offences(clientFiles, ["client", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui", "@getpaseo/plugin/client/react-native", "react", "react-native", "@tanstack/react-query", "zod"]),
       [],
     );
   });
@@ -104,7 +104,7 @@ describe("the manifest", () => {
   it("has an id Paseo accepts, a name and a pinned requirement", () => {
     const manifest = JSON.parse(read("paseo-plugin.json"));
     assert.match(manifest.id, /^[a-z][a-z0-9-]*$/);
-    assert.equal(manifest.requirements.paseo, ">=0.11.2 <0.12.0");
+    assert.equal(manifest.requirements.paseo, ">=0.11.2 <0.13.0");
     assert.ok(manifest.name && manifest.description);
   });
 });

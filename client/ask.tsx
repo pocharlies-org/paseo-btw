@@ -1,7 +1,8 @@
 import type { PluginAgentPanelProps, PluginClientContext } from "@getpaseo/plugin/client";
 import { useAgent, usePaseo, useRpc } from "@getpaseo/plugin/client";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ScrollView, Text, TextInput, Pressable, View } from "react-native";
+import { Platform, ScrollView, Text, TextInput, Pressable, View } from "react-native";
+import { Icon, copyText, useToast } from "@getpaseo/plugin/client/react-native";
 import { sideAnswerSoFar, sideQuestion } from "../shared/contract.ts";
 import { Markdown } from "./markdown.tsx";
 import { inFlight, setThread, subscribe, threadOf, type Turn } from "./threads.ts";
@@ -19,6 +20,15 @@ import { inFlight, setThread, subscribe, threadOf, type Turn } from "./threads.t
 // POLL_MS, so the text grows like in the main window. The model is the session's unless another one of its provider is picked here.
 
 const POLL_MS = 400;
+// The panel reads like Paseo's own chat: the body text already inherits the app's UI font from the root CSS (the plugin theme only carries
+// colors), so here go the chat's content metrics (message.tsx: fontSize.content 15, web lineHeight 1.4) and Paseo's default mono stack for
+// code (styles/theme.ts DEFAULT_MONO_FONT_STACK; a user-customised mono font is not reachable from a plugin theme).
+const CONTENT = { fontSize: 15, ...(Platform.OS === "web" ? { lineHeight: 21 } : {}) };
+const MONO = Platform.select({
+  ios: "ui-monospace",
+  web: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  default: "monospace",
+});
 const held = new Map<string, string>();
 const listeners = new Map<string, Set<(question: string) => void>>();
 // The model picked for a session's side questions; none = the session's own. Outside the component, like the threads, so a `/btw` from the
@@ -60,6 +70,7 @@ function BtwPanel({ agentId, theme, layout, navigation }: PluginAgentPanelProps)
   const start = useRpc(sideQuestion);
   const soFar = useRpc(sideAnswerSoFar);
   const paseo = usePaseo();
+  const toast = useToast();
   const turns = useSyncExternalStore(subscribe, () => threadOf(agentId));
   const [now, setNow] = useState(Date.now);
   const waiting = turns.some(inFlight);
@@ -147,16 +158,16 @@ function BtwPanel({ agentId, theme, layout, navigation }: PluginAgentPanelProps)
       panel: { padding: layout.compact ? 10 : 16, gap: 8, flex: 1, backgroundColor: theme.colors.surface0 },
       row: { flexDirection: "row" as const, gap: 8, alignItems: "center" as const },
       turn: { gap: 4, paddingBottom: 10 },
-      input: { flex: 1, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.foreground, backgroundColor: theme.colors.surface1 },
+      input: { flex: 1, padding: 8, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, color: theme.colors.foreground, backgroundColor: theme.colors.surface1, ...CONTENT },
       button: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: theme.colors.surface2 },
       picker: { alignSelf: "flex-end" as const, paddingVertical: 4, paddingHorizontal: 8, borderRadius: 6, backgroundColor: theme.colors.surface1 },
       option: { paddingVertical: 6, paddingHorizontal: 8 },
-      text: { color: theme.colors.foreground },
+      text: { color: theme.colors.foreground, ...CONTENT },
       bold: { fontWeight: "700" as const },
-      heading: { fontWeight: "700" as const, fontSize: 14 },
-      codeInline: { fontFamily: "monospace", backgroundColor: theme.colors.surface2 },
-      code: { fontFamily: "monospace", backgroundColor: theme.colors.surface1, padding: 8, borderRadius: 6 },
-      muted: { color: theme.colors.foregroundMuted },
+      heading: { fontWeight: "700" as const, fontSize: 16 },
+      codeInline: { fontFamily: MONO, fontSize: 12, backgroundColor: theme.colors.surface2 },
+      code: { fontFamily: MONO, fontSize: 12, backgroundColor: theme.colors.surface2, padding: 12, borderRadius: 8 },
+      muted: { color: theme.colors.foregroundMuted, ...CONTENT },
       danger: { color: theme.colors.statusDanger },
     }),
     [theme, layout.compact],
@@ -183,7 +194,19 @@ function BtwPanel({ agentId, theme, layout, navigation }: PluginAgentPanelProps)
       <ScrollView ref={scroller} style={{ flex: 1 }} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
         {turns.map((turn) => (
           <View key={turn.id} style={styles.turn}>
-            <Text style={styles.muted}>You: {turn.question}</Text>
+            {/* The question the user put in, copyable like a VS Code block: the corner button takes the raw text back to the clipboard. */}
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+              <Text style={[styles.muted, { flex: 1 }]} selectable>
+                You: {turn.question}
+              </Text>
+              <Pressable
+                onPress={() => void copyText(turn.question).then(() => toast.show("Copied"), () => toast.error("This browser blocks clipboard access"))}
+                accessibilityRole="button"
+                accessibilityLabel={`Copy your question: ${turn.question}`}
+              >
+                <Icon name="Copy" size={14} color={theme.colors.foregroundMuted} />
+              </Pressable>
+            </View>
             {turn.answer !== undefined && <Markdown text={turn.answer} styles={styles} />}
             {inFlight(turn) && (
               <Text style={styles.muted}>
