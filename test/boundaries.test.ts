@@ -45,7 +45,7 @@ describe("C2 and P3.5 · the runtimes do not reach into each other", () => {
     const nodeInClient = clientFiles.concat(sharedFiles).flatMap((file) => importsOf(file).filter((spec) => spec.startsWith("node:") || builtinModules.includes(spec)).map((spec) => `${file} imports ${spec}`));
     assert.deepEqual(nodeInClient, []);
     assert.deepEqual(
-      offences(clientFiles, ["client", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui", "react", "react-native", "@tanstack/react-query", "zod"]),
+      offences(clientFiles, ["client", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/client", "@getpaseo/plugin/client/ui", "@getpaseo/plugin/client/react-native", "react", "react-native", "@tanstack/react-query", "zod"]),
       [],
     );
   });
