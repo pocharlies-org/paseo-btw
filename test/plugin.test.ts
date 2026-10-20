@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
-import { FAILURE_TEXT } from "../server/accounts.ts";
+import { FAILURE_TEXT } from "../server/route.ts";
 import { sideAnswerSoFar, sideQuestion } from "../shared/contract.ts";
 import { install } from "./support/harness.ts";
 

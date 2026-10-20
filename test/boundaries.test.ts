@@ -54,9 +54,9 @@ describe("C2 and P3.5 · the runtimes do not reach into each other", () => {
     assert.deepEqual(offences(sharedFiles, ["shared"], ["@getpaseo/plugin", "zod"]), []);
   });
 
-  it("the server imports server/, shared/, the SDK's server entries, zod and the three Node modules it needs", () => {
+  it("the server imports server/, shared/, the SDK's server entries, zod and the four Node modules it needs", () => {
     assert.deepEqual(
-      offences(serverFiles, ["server", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/server", "@getpaseo/plugin/server/usage", "zod", "node:fs/promises", "node:http", "node:os", "node:path"]),
+      offences(serverFiles, ["server", "shared"], ["@getpaseo/plugin", "@getpaseo/plugin/server", "@getpaseo/plugin/server/usage", "zod", "node:fs/promises", "node:http", "node:https", "node:os", "node:path"]),
       [],
     );
   });
@@ -66,10 +66,10 @@ describe("C2 and P3.5 · the runtimes do not reach into each other", () => {
   });
 
   it("nothing opens a port or listens", () => {
-    for (const file of sources) assert.doesNotMatch(read(file), /createServer|\.listen\(|node:(net|dgram|tls|https|http2|cluster|worker_threads)|WebSocketServer/, file);
+    for (const file of sources) assert.doesNotMatch(read(file), /createServer|\.listen\(|node:(net|dgram|tls|http2|cluster|worker_threads)|WebSocketServer/, file);
   });
 
-  it("the client receives the state the daemon gives it and never sees the bearer or service.json", () => {
+  it("the client receives the state the daemon gives it and never sees the key", () => {
     for (const file of clientFiles.concat(sharedFiles)) assert.doesNotMatch(read(file), /bearer|authorization|service\.json|accessToken|refreshToken/i, file);
   });
 });
