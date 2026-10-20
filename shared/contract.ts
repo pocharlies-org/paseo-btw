@@ -1,12 +1,9 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
-// The contract between this plugin's panel and its server half, and the id rule of the accounts whose token is read.
+// The contract between this plugin's panel and its server half.
 // CONTRACT: rpc.paseo-btw.side-question.v1 — `agent.side-question` and `agent.side-question.poll` are the only way the panel asks;
 // a new shape enters as `.v2` and the old name keeps answering.
-
-/** An account id as the account service names it: lowercase, no path characters, so it is safe inside a file name. */
-export const accountId = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/);
 
 /** Starts the answer to a side question from the context of an agent's session and returns its id: Paseo cuts every plugin RPC at 30 s. */
 export const sideQuestion = defineRpc({

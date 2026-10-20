@@ -1,26 +1,24 @@
 import { readFile } from "node:fs/promises";
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { applyEvent, readEvents, transcriptMessages, withQuestion, type Answer } from "../shared/ask.ts";
-import { AskError, FAILURE_TEXT, accountOf, token } from "./accounts.ts";
+import { AskError, FAILURE_TEXT, route } from "./route.ts";
 import * as http from "./http.ts";
 import { locate } from "./transcripts.ts";
 
-// The side question goes to the local router (claude-router-front-env.py: the front on 18792 forwards to this), with the bearer of the
-// account whose session it is. So it is routed exactly like the session it is asked about: same account, same backend, same quota.
-const ROUTER = { host: "127.0.0.1", port: 18791 };
-// The answer streams, so the deadline is silence: this long without a byte from the router and it is given up.
+// The answer streams, so the deadline is silence: this long without a byte from LiteLLM and it is given up.
 const IDLE_MS = 120_000;
 const MAX_BYTES = 4 * 1024 * 1024;
 const MAX_TOKENS = 2_048;
 // An ended answer waits this long for the panel to read its last piece, then it is forgotten.
 const KEEP_MS = 10 * 60_000;
-// An OAuth bearer reaches Opus and Sonnet only as Claude Code: without this block Anthropic answers 429 `rate_limit_error` "Error".
+// LiteLLM sends Claude models with an account's OAuth bearer, which reaches Opus and Sonnet only as Claude Code: without this block
+// Anthropic answers 429 `rate_limit_error` "Error".
 const SYSTEM = [{ type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." }];
 
 /** What a side question costs: the session's context since its last compaction, no tools, and the question with its reminder. */
 export function askBody(lines: string[], model: string | null | undefined, question: string): string {
   const { messages, model: echoed } = transcriptMessages(lines);
-  // `model` is the one picked in the panel or the agent's, the name the router knows; the transcript carries the name the API echoed, which for
+  // `model` is the one picked in the panel or the agent's, the name LiteLLM knows; the transcript carries the name the API echoed, which for
   // a non-Claude model is not routable. Paseo marks the 1M window as `[1m]`, which the API does not take, and the capped context fits without it.
   const name = (model ?? echoed ?? "claude-sonnet-4-5").replace(/\[[^\]]*\]$/, "");
   return JSON.stringify({ model: name, max_tokens: MAX_TOKENS, stream: true, system: SYSTEM, tools: [], messages: withQuestion(messages, question) });
@@ -47,7 +45,6 @@ export async function sideQuestion(
   { paseo }: PluginHandlerContext,
 ) {
   let body: string;
-  let configDir: string | null;
   try {
     // Everything that locates and reads the session, so that a failure here is one of the fixed texts and never a Node error with a path.
     const { entries } = await paseo.agents.list({ page: { limit: 200 } });
@@ -56,39 +53,32 @@ export async function sideQuestion(
     if (!sessionId) throw new AskError("no-session");
     const found = await locate(sessionId);
     if (!found) throw new AskError("no-transcript");
-    body = askBody((await readFile(found.path, "utf8")).split("\n"), model ?? agent?.model, question);
-    configDir = found.configDir;
+    body = askBody((await readFile(found, "utf8")).split("\n"), model ?? agent?.model, question);
   } catch (error) {
     if (error instanceof AskError) throw error;
     throw new AskError("unreadable");
   }
 
-  let bearer: string;
-  try {
-    bearer = await token(await accountOf(configDir));
-  } catch (error) {
-    if (error instanceof AskError) throw error;
-    throw new AskError("unreadable");
-  }
+  const to = await route();
   sweep();
   const id = String(++lastJob);
   const job: Job = { text: "", model: "", done: false };
   jobs.set(id, job);
-  void write(job, bearer, body);
+  void write(job, to, body);
   return { id };
 }
 
 /** Writes the streamed answer into its job as it arrives, and how it ended. Never throws: every end is one of the fixed texts. */
-async function write(job: Job, bearer: string, body: string) {
+async function write(job: Job, to: { url: URL; key: string }, body: string) {
   let pending = "";
   try {
     const headers = {
       "content-type": "application/json",
       "anthropic-version": "2023-06-01",
-      authorization: `Bearer ${bearer}`,
+      authorization: `Bearer ${to.key}`,
       "content-length": String(Buffer.byteLength(body)),
     };
-    const status = await http.stream(ROUTER, "/v1/messages", headers, body, IDLE_MS, MAX_BYTES, (text) => {
+    const status = await http.stream(to.url, "/v1/messages", headers, body, IDLE_MS, MAX_BYTES, (text) => {
       const { events, rest } = readEvents(pending + text);
       pending = rest;
       for (const event of events) applyEvent(job, event);

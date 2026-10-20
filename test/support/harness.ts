@@ -1,30 +1,16 @@
-import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import contribute from "../../index.server.ts";
 
-/** A made-up bearer for the fake service: whatever shows up anywhere else is a leak. */
-export const canary = `canary_${randomBytes(24).toString("base64url")}`;
-
-/**
- * The environment of a child: the runtime's own (PATH, the LD_LIBRARY_PATH of a toolcache python, ...) minus every variable the service
- * or the CLI read, so nothing of the host decides a result (the same rule as test/entorno.js of the extension), plus what the test sets.
- */
-export const childEnv = (extra: Record<string, string>): Record<string, string | undefined> => ({
-  ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !/^(CLAUDE_|ANTHROPIC_)|_PROXY$/i.test(name))),
-  ...extra,
-});
-
 const made: string[] = [];
 
-/** A temporary accounts directory (0700) with a service.json when `discovery` is given; the plugin is pointed at it. */
-export function accountsDir(discovery: Record<string, unknown> | null): string {
+/** A temporary PASEO_HOME (0700) with no config.json: the plugin is pointed at it. */
+export function paseoHome(): string {
   const dir = mkdtempSync(join(tmpdir(), "paseo-plugin-"));
   chmodSync(dir, 0o700);
-  if (discovery) writeFileSync(join(dir, "service.json"), JSON.stringify({ v: 1, pid: 424242, ...discovery }) + "\n", { mode: 0o600 });
-  process.env.CLAUDE_CUENTAS_DIR = dir;
+  process.env.PASEO_HOME = dir;
   made.push(dir);
   return dir;
 }
@@ -60,5 +46,5 @@ export function install() {
   return { handlers, rpc, cleanup };
 }
 
-// Until a test points the plugin somewhere else it looks at an empty throwaway directory, never at the real accounts directory of the host.
-accountsDir(null);
+// Until a test points the plugin somewhere else it looks at an empty throwaway directory, never at the real Paseo config of the host.
+paseoHome();

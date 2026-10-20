@@ -2,81 +2,54 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
-import { accountOf } from "../server/accounts.ts";
+import { route } from "../server/route.ts";
 import { answerSoFar, askBody } from "../server/ask.ts";
 import { stream } from "../server/http.ts";
 
-// The two decisions `server/ask.ts` takes before any network is involved: whose token to read, and what to send. The transport is the one
-// helper of `server/http.ts`, covered against the real service by integration.test.ts.
+// The two decisions `server/ask.ts` takes before any network is involved: where to send, and what. The transport is `server/http.ts`.
 const made: string[] = [];
 
-function accountsDir(accounts: unknown): string {
-  const dir = mkdtempSync(join(tmpdir(), "ask-accounts-"));
-  chmodSync(dir, 0o700);
-  writeFileSync(join(dir, "accounts.json"), JSON.stringify({ accounts }));
-  process.env.CLAUDE_CUENTAS_DIR = dir;
+/** A throwaway PASEO_HOME whose config.json has `env` as the `claude` provider's env. */
+function paseoHome(env: unknown): void {
+  const dir = mkdtempSync(join(tmpdir(), "ask-paseo-"));
+  writeFileSync(join(dir, "config.json"), JSON.stringify({ agents: { providers: { claude: { env } } } }));
+  process.env.PASEO_HOME = dir;
   made.push(dir);
-  return dir;
 }
 
 afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
-  delete process.env.CLAUDE_CUENTAS_DIR;
+  delete process.env.PASEO_HOME;
 });
 
-describe("whose account a session belongs to", () => {
-  const accounts = [
-    { id: "edani", label: "E-dani Empresa", configDir: "/home/dibanez/.claude-edani", default: false },
-    { id: "correo", label: "E-dani Correo", configDir: "/home/dibanez/.claude-correo", default: true },
-  ];
-
-  it("is the account whose configDir the provider of Paseo uses", async () => {
-    accountsDir(accounts);
-    assert.equal(await accountOf("/home/dibanez/.claude-edani"), "edani");
-    assert.equal(await accountOf("/home/dibanez/.claude-correo"), "correo");
+describe("where a side question goes", () => {
+  it("is the LiteLLM of Paseo's claude provider, with its key", async () => {
+    paseoHome({ ANTHROPIC_BASE_URL: "https://litellm.example.com", ANTHROPIC_AUTH_TOKEN: "sk-x" });
+    const { url, key } = await route();
+    assert.equal(url.href, "https://litellm.example.com/");
+    assert.equal(key, "sk-x");
   });
 
-  it("a provider with a directory nobody owns is not an account, and nothing is read", async () => {
-    accountsDir(accounts);
-    await assert.rejects(accountOf("/home/dibanez/.claude-nadie"), { message: /account is not one of the accounts/ });
-  });
-
-  it("the provider without a directory of its own takes the account the service has effective", async () => {
-    accountsDir(accounts);
-    writeFileSync(join(process.env.CLAUDE_CUENTAS_DIR!, "service.json"), JSON.stringify({ v: 1, url: "http://127.0.0.1:1", token: "x".repeat(20) }));
-    // No service answering on that port: that is not the same as an account with no id, and the plugin says so.
-    await assert.rejects(accountOf(null), { message: /could not be read on this machine/ });
-  });
-
-  it("a service that answers with no account effective and none preferred is not an account", async () => {
-    const dir = accountsDir(accounts);
-    const state = createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          v: 1,
-          generated: "2026-10-12T20:00:00+02:00",
-          revision: 1,
-          service: { version: "2.1.0" },
-          config: { preferred: null, order: [], autoJump: false, visible: [] },
-          effective: null,
-          accounts: [],
-          events: [],
-        }),
-      );
-    });
-    await once(state.listen(0, "127.0.0.1"), "listening");
-    writeFileSync(join(dir, "service.json"), JSON.stringify({ v: 1, url: `http://127.0.0.1:${(state.address() as AddressInfo).port}`, token: "x".repeat(20) }));
-    try {
-      await assert.rejects(accountOf(null), { message: /not one of the accounts/ });
-    } finally {
-      state.closeAllConnections();
-      state.close();
+  it("the key goes over https or to loopback only", async () => {
+    for (const base of ["http://litellm.example.com", "https://user@evil.example", "https://litellm.example.com/x", "ftp://127.0.0.1"]) {
+      paseoHome({ ANTHROPIC_BASE_URL: base, ANTHROPIC_AUTH_TOKEN: "sk-x" });
+      await assert.rejects(route(), { message: /no LiteLLM route/ }, base);
     }
+    paseoHome({ ANTHROPIC_BASE_URL: "http://127.0.0.1:4000", ANTHROPIC_AUTH_TOKEN: "sk-x" });
+    assert.equal((await route()).url.port, "4000");
+  });
+
+  it("no provider, no URL or no key is no route, never a Node error", async () => {
+    for (const env of [undefined, { ANTHROPIC_BASE_URL: "https://litellm.example.com" }, { ANTHROPIC_AUTH_TOKEN: "sk-x" }]) {
+      paseoHome(env);
+      await assert.rejects(route(), { message: /no LiteLLM route/ });
+    }
+    process.env.PASEO_HOME = join(tmpdir(), "no-such-paseo-home");
+    await assert.rejects(route(), { message: /no LiteLLM route/ });
   });
 });
 
@@ -85,7 +58,7 @@ describe("a failure while locating the session", () => {
     const { sideQuestion } = await import("../server/ask.ts");
     const context = { paseo: { agents: { list: async () => { throw new Error("EACCES /home/dibanez/.claude-edani/projects/x.jsonl"); } } } } as never;
     await assert.rejects(sideQuestion({ agentId: "a1", question: "¿y?" }, context), {
-      message: "the session or its account could not be read on this machine",
+      message: "the session could not be read on this machine",
     });
   });
 });
@@ -110,7 +83,7 @@ describe("what a side question sends", () => {
     assert.deepEqual(body().system, [{ type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." }]);
   });
 
-  it("takes the model of the agent, which is the name the router knows, and the transcript's only as fallback", () => {
+  it("takes the model of the agent, which is the name LiteLLM knows, and the transcript's only as fallback", () => {
     const lines = [
       JSON.stringify({ type: "user", message: { role: "user", content: "hola" } }),
       JSON.stringify({ type: "assistant", message: { role: "assistant", model: "qwen3.8-flash", content: [{ type: "text", text: "hey" }] } }),
@@ -129,8 +102,8 @@ describe("what a side question sends", () => {
   });
 
   it("answers a failure with one fixed sentence, never with a path, a url or a token", async () => {
-    const { AskError } = await import("../server/accounts.ts");
-    const texts = (["no-session", "no-transcript", "no-account", "unreadable", "router", "too-big", "refused", "lost"] as const).map((k) => new AskError(k).message);
+    const { AskError } = await import("../server/route.ts");
+    const texts = (["no-session", "no-transcript", "no-route", "unreadable", "router", "too-big", "refused", "lost"] as const).map((k) => new AskError(k).message);
     assert.equal(new Set(texts).size, texts.length);
     for (const text of texts) assert.ok(!/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+|\/home\/|127\.0\.0\.1|Bearer/.test(text), text);
   });
@@ -153,7 +126,7 @@ describe("an answer that streams", () => {
     });
     router.listen(0, "127.0.0.1");
     await once(router, "listening");
-    const to = { host: "127.0.0.1", port: (router.address() as AddressInfo).port };
+    const to = new URL(`http://127.0.0.1:${(router.address() as AddressInfo).port}`);
     try {
       const pieces: string[] = [];
       assert.equal(await stream(to, "/", {}, "{}", 5_000, 1_024, (text) => pieces.push(text)), 200);
@@ -174,7 +147,7 @@ describe("an answer that streams", () => {
     router.listen(0, "127.0.0.1");
     await once(router, "listening");
     try {
-      await assert.rejects(stream({ host: "127.0.0.1", port: (router.address() as AddressInfo).port }, "/", {}, "{}", 200, 1_024, () => {}));
+      await assert.rejects(stream(new URL(`http://127.0.0.1:${(router.address() as AddressInfo).port}`), "/", {}, "{}", 200, 1_024, () => {}));
     } finally {
       router.closeAllConnections();
       router.close();

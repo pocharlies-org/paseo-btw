@@ -17,3 +17,4 @@ contracts:
     note: >-
       `agent.side-question` (starts the answer and returns its id) and `agent.side-question.poll` (text so far, done, error, tool, model):
       the only surface between this plugin's panel and its server half. A new shape enters as `.v2` and the old name keeps answering.
+      `accountId` left shared/contract.ts with the account service it described; both RPCs keep their shape.
