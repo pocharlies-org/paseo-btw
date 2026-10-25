@@ -104,7 +104,7 @@ describe("the manifest", () => {
   it("has an id Paseo accepts, a name and a pinned requirement", () => {
     const manifest = JSON.parse(read("paseo-plugin.json"));
     assert.match(manifest.id, /^[a-z][a-z0-9-]*$/);
-    assert.equal(manifest.requirements.paseo, ">=0.11.2 <0.13.0");
+    assert.equal(manifest.requirements.paseo, ">=0.11.2 <0.14.0");
     assert.ok(manifest.name && manifest.description);
   });
 });
