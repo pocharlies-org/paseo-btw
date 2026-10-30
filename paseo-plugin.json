@@ -2,5 +2,5 @@
   "id": "paseo-btw",
   "name": "Side question",
   "description": "Under an agent, /btw asks a side question: one answer from the context of that session with no tools, in its own panel, while the agent keeps working.",
-  "requirements": { "paseo": ">=0.11.2 <0.14.0" }
+  "requirements": { "paseo": ">=0.11.2" }
 }
